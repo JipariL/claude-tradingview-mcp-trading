@@ -1,50 +1,140 @@
 {
-  "watchlist": ["BTCUSDT"],
-  "default_timeframe": "1m",
+  "watchlist": ["BTCUSD", "BTCUSDT", "ETHUSD", "ETHUSDT"],
+  "default_timeframe": "1D",
 
   "strategy": {
-    "name": "VWAP + RSI(3) + EMA(8) Scalping Strategy",
-    "sources": ["Lewis Jackson"],
-    "description": "Three indicators, each doing a different job. EMA(8) for trend direction, VWAP for session bias, RSI(3) for entry timing. All three must align before a trade fires."
+    "name": "Michaël van de Poppe — Mean Reversion + Macro Rotation Framework",
+    "sources": ["Michaël van de Poppe (@CryptoMichNL)"],
+    "description": "A macro-driven mean-reversion framework for Bitcoin (and Ethereum). Van de Poppe uses the 21-day MA as the 'fair price' anchor: buy when price is significantly below the 21-day MA (mean reversion long), sell when price is stretched above it. Macro context is set by Bitcoin vs Gold RSI on weekly/bi-weekly timeframes. When BTC/GOLD weekly RSI < 30, it historically marks a cycle bottom — maximum accumulation zone. When gold peaks and starts to consolidate, Bitcoin rotation begins. Day trading variant: grid/volatility strategy buying dips below 20-day MA and selling 1% above, targeting 30-50% APR."
   },
 
   "indicators": {
-    "ema_8": "Trend direction. Price above EMA(8) = bullish momentum. Below = bearish.",
-    "vwap": "Session bias. Price above VWAP = buyers in control. Below = sellers. Resets at midnight UTC.",
-    "rsi_3": "Entry timing. RSI on 3 candles only — extremely sensitive. Below 30 in an uptrend = snap-back setup. Above 70 in a downtrend = reversal likely."
+    "21day_ma": "Primary trend filter and fair-price anchor. Price below 21-day MA = bearish structure; price breaking above 21-day MA = bull cycle resumption trigger. Van de Poppe calls this the single most important level to watch for Bitcoin on the daily chart.",
+    "50day_ma": "Secondary trend level. Price must clear both 21-day and 50-day MAs for full bullish confirmation. Also used as a support/resistance zone during pullbacks.",
+    "200day_or_200week_ma": "Long-term macro support. The 200-week MA acts as the absolute bear-market floor; price touching it confirms cycle-bottom territory.",
+    "50week_ma": "Bull/bear regime divider on the weekly chart. Sustained close above 50-week MA = bull market confirmed. Sustained close below = bear market. Sitting at ~100K in the current cycle.",
+    "20day_ma_grid": "Fair-price reference for the grid/volatility day-trading strategy. Buy below, sell above. Identical in function to the 21-day MA but used specifically for short-term grid orders.",
+    "btc_vs_gold_rsi_weekly": "Primary macro accumulation signal. Weekly RSI of BTC/GOLD pair. When < 30: historically marks the best accumulation window for the entire cycle. Readings of 22 (April 2026) are the lowest ever recorded. When > 70: overvalued vs gold, consider reducing Bitcoin.",
+    "eth_vs_silver_rsi": "Ethereum-specific accumulation signal. Bi-weekly and weekly RSI of ETH/SILVER. When at all-time-low RSI levels: Ethereum is deeply undervalued vs silver — strong accumulation trigger.",
+    "macd_3day": "Momentum exhaustion indicator on the 3-day timeframe. When 3-day MACD is at historical lows (below all prior readings), it signals a capitulation bottom — strongest buy signal. When 3-day MACD makes new highs, reduce risk.",
+    "macd_weekly": "Weekly momentum. Used alongside 3-day MACD to confirm macro turning points. Historically extreme lows on weekly MACD have corresponded with major bear-market bottoms.",
+    "fear_greed_index": "Sentiment extremes filter. Readings at or below levels seen in 2022 (bare market lows) = strong buy zone. Readings near 100 = euphoria, reduce exposure.",
+    "rsi_daily_btc": "Daily RSI on Bitcoin. Lowest daily RSI ever recorded (previously only seen at COVID bottom and 2018 bottom) = high-conviction buy signal. RSI < 30 on daily = short-term oversold, look for entries.",
+    "business_cycle_indicator": "Macro regime context. When business cycle is at its weakest (PMI/ISM data weakening, unemployment rising, Fed pivoting to cuts) = best time to step into crypto. When business cycle peaks = reduce crypto allocation.",
+    "realized_price": "On-chain fair value. BTC trading near or below realized price = accumulation zone confirmed by on-chain fundamentals.",
+    "btc_production_cost": "Mining cost floor. ~$70K in current cycle. Bitcoin trading at or below production cost is a strong fundamental buy signal.",
+    "gold_consolidation_signal": "Rotation trigger. When gold starts to consolidate or correct after a parabolic run (extreme weekly/bi-weekly MACD on gold), Bitcoin rotation begins. Watch for gold MACD to peak and roll over.",
+    "choppiness_index_14": "Market regime filter (period 14). CI < 50 = trending market, trade allowed. CI > 50 = choppy/sideways market, skip trade. Inspired by David (Trading with DaviddTech) who used this to cut max drawdown by 5%+ by avoiding false signals in choppy conditions. The CI filters out the most damaging trades — those taken when the market has no clear direction."
   },
 
   "bias_criteria": {
-    "bullish": ["Price is above VWAP", "Price is above EMA(8)"],
-    "bearish": ["Price is below VWAP", "Price is below EMA(8)"]
+    "bullish": [
+      "BTC/GOLD weekly RSI is below 30 (currently at historic lows ~22) — cycle accumulation window confirmed",
+      "3-day MACD on Bitcoin is at or near historical lows (heavier than 2022 or COVID crash readings)",
+      "Daily RSI on Bitcoin is at extreme lows (comparable to COVID bottom or 2018 crash bottom)",
+      "Price is at or has just broken above the 21-day MA after being suppressed below it for months",
+      "Gold/Silver weekly MACD is showing exhaustion or topping signals — rotation into Bitcoin imminent",
+      "Business cycle is weakening (rising unemployment, falling PMI, Fed moving toward rate cuts) — new cycle starting",
+      "Fear and greed index is at levels last seen at 2022 bare-market lows",
+      "ETH/SILVER bi-weekly RSI is at all-time lows — Ethereum deeply undervalued vs commodities",
+      "Bitcoin is trading near realized price (~$50K) or production cost (~$70K) — on-chain fundamental floor"
+    ],
+    "bearish": [
+      "Price is below the 21-day MA and has failed to reclaim it for multiple weeks",
+      "3-day MACD on Bitcoin is making new highs or extremely extended to the upside",
+      "BTC/GOLD weekly RSI is above 70 — Bitcoin overvalued vs gold",
+      "Gold weekly MACD is at historic highs and accelerating — commodities in euphoria phase, Bitcoin lags",
+      "Business cycle is at peak (high PMI, low unemployment, rising rates) — risk-off environment",
+      "Fear and greed index is near 100 — euphoria, late-cycle signal",
+      "Bitcoin failed to break above 50-week MA (currently ~$100K) and rejected back below it"
+    ],
+    "neutral": [
+      "Price is consolidating around the 21-day MA without a clear directional break",
+      "BTC/GOLD weekly RSI is between 30 and 50 — not at extremes in either direction",
+      "Gold is consolidating after a big run but has not yet topped — rotation window approaching but not confirmed",
+      "Business cycle is mid-cycle — no strong signal in either direction"
+    ]
   },
 
   "entry_rules": {
     "long": [
-      "Price is above VWAP — buyers in control for the session",
-      "Price is above EMA(8) — uptrend confirmed",
-      "RSI(3) has dropped below 30 — short-term pullback in an uptrend, snap-back likely"
+      "PRIMARY SIGNAL: BTC/GOLD weekly RSI crosses below 30 — begin accumulation. The lower the RSI goes below 30, the more aggressive the accumulation.",
+      "CONFIRMATION 1: 3-day MACD on Bitcoin is at or below historical extremes (heavier than 2022 or COVID crash) — add to position.",
+      "CONFIRMATION 2: Daily RSI on Bitcoin drops to extreme lows (sub-20 level, comparable to COVID bottom or 2018 bottom) — maximum accumulation trigger.",
+      "TREND ENTRY: Price breaks and closes above the 21-day MA on the daily chart after being below it for an extended period — enter a trend-following long. First target: 21-day MA breakout level, then prior resistance zone (e.g. $92K then $100-105K).",
+      "GRID/VOLATILITY ENTRY: Price drops below the 20-day MA. Place buy orders in a grid below the 20-day MA spaced according to the asset's average daily volatility (BTC avg ~2.24%/day). Scale in deeper as price moves further below the mean. Target +1% per grid cell above the 20-day MA.",
+      "MEAN REVERSION ENTRY: When a 6-sigma or larger single-day crash occurs (e.g., $10K single-day drop in BTC), treat as capitulation. Begin accumulating immediately — these outlier moves historically snap back toward fair value (20-day MA) within days to weeks.",
+      "MACRO ROTATION ENTRY: When gold weekly MACD peaks and starts to roll over after an extreme bull run, AND BTC/GOLD RSI is below 30, begin building a Bitcoin long position in anticipation of the gold-to-Bitcoin rotation trade."
     ],
     "short": [
-      "Price is below VWAP — sellers in control",
-      "Price is below EMA(8) — downtrend confirmed",
-      "RSI(3) has spiked above 70 — overbought in a downtrend, reversal likely"
+      "Van de Poppe does NOT advocate directional shorting of crypto. He uses leverage only for delta-neutral hedging of existing long positions.",
+      "HEDGE ONLY: If holding a long Bitcoin/ETH position and the 21-day MA is failing as support, open a short hedge on BTC or ETH (the only two assets OKX/platforms support for short margin) to reduce net delta — not to profit from downside.",
+      "REDUCE EXPOSURE: When BTC/GOLD weekly RSI is above 70 AND 3-day MACD is making new historic highs AND fear/greed index is near 100 — reduce spot position size. Do not hold full allocation into euphoria peaks.",
+      "SELL GRID ORDERS: In the grid/volatility strategy, place sell orders 1% above each buy order level. When price rises above the 20-day MA, sell orders execute automatically. This is not a directional short — it is taking profit on long positions."
     ]
   },
 
   "exit_rules": [
-    "Exit when RSI(3) crosses back above 50 (for longs) or below 50 (for shorts)",
-    "Hard stop: 0.3% below entry for longs, 0.3% above entry for shorts",
-    "Take profit at next VWAP touch or EMA(8) cross"
+    "GRID TAKE PROFIT: In grid/volatility strategy, each buy order has a corresponding sell order placed 1% above it. Profit target per trade is 1%. Reinvest profits to compound. Target 30-50% APR.",
+    "TREND POSITION TAKE PROFIT: When price has broken above 21-day MA and approaches prior resistance zones, begin scaling out. First scale: at prior resistance (e.g., $92K). Second scale: at round numbers / psychological levels (e.g., $100K, $105K). Final scale: when BTC/GOLD weekly RSI approaches 70 or above.",
+    "ACCUMULATION POSITION EXIT: Cycle-top signal is when gold peaks and starts strongly underperforming Bitcoin, Bitcoin/GOLD RSI approaches extreme highs (70+), and fear/greed index reaches 100. Rotate back toward gold or commodities.",
+    "STOP LOSS — TREND TRADE: If price breaks back below the 21-day MA after a bullish breakout entry, the thesis is invalidated. Exit or significantly reduce the trend-following long. Next major support: 50-day MA.",
+    "STOP LOSS — MACRO ACCUMULATION: If Bitcoin fails to hold realized price (~$50K) AND production cost (~$70K) AND 200-week MA — reduce accumulation pace and reassess. A sustained break below all three levels would indicate a deeper bear market than historical precedent.",
+    "DO NOT SELL AT FEAR EXTREMES: Van de Poppe explicitly states not to sell when daily RSI is at historic lows, 3-day MACD is at historic lows, and BTC/GOLD RSI is below 30 simultaneously — this is the worst possible time to exit.",
+    "ROTATION EXIT: When gold and silver MACD rolls over from historic highs, and Bitcoin starts to outperform, begin exiting gold/commodity positions and entering Bitcoin. The inverse rotation (Bitcoin to gold) applies when BTC/GOLD RSI peaks above 70."
   ],
 
   "risk_rules": [
-    "Risk maximum 1% of portfolio per trade",
-    "Maximum trade size capped by MAX_TRADE_SIZE_USD in .env",
-    "Maximum trades per day capped by MAX_TRADES_PER_DAY in .env",
-    "Do not trade if price is more than 1.5% away from VWAP — overextended",
-    "Paper trade first — validate this strategy on your specific asset before going live"
+    "No directional leverage for long-only speculation. Leverage is reserved for delta-neutral hedging of spot positions only.",
+    "Grid/volatility strategy: allocate only a portion of total portfolio (van de Poppe uses a separate 'day trading portfolio' starting at $1K, scaled to $10-17K). Keep grid allocation separate from core accumulation holdings.",
+    "Core accumulation position sizing: DCA monthly regardless of price direction during macro accumulation windows (BTC/GOLD RSI < 30). Van de Poppe adds $5-10K per month to altcoin/BTC positions during confirmed accumulation phases.",
+    "During accumulation: prefer larger-cap assets first (Bitcoin, Ethereum) before moving to altcoins. Capital flows into larger market caps first.",
+    "Grid strategy fund management: never become fully allocated in the grid. When price drops below all grid levels, remove top sell orders and re-place them lower to maintain volume generation. The strategy requires generating trades continuously.",
+    "Pair selection for grid: start with one pair. Bitcoin is lower volatility (avg 2.24%/day) and lower risk. Higher-volatility altcoins offer higher grid returns but require smaller position sizes. Optimize grid spacing to the specific pair's daily volatility.",
+    "On extreme crashes (6-sigma events): do not panic sell. These outlier moves are historically followed by mean reversion to fair price (20-day MA) within days to weeks.",
+    "Do not chase gold and silver in euphoria phase — they are at 7+ sigma events in 2025/2026. The opportunity is in what has NOT moved yet (Bitcoin, Ethereum).",
+    "Avoid increasing altcoin risk during early accumulation phase. Establish Bitcoin and Ethereum first, then rotate into altcoins once momentum confirms."
   ],
 
-  "notes": "Scalping strategy — designed for 1m to 5m timeframes. RSI(3) is intentionally fast and sensitive. Do not apply to higher timeframes."
+  "avoid_trade_conditions": [
+    "Do not enter a trend-following long while price is still below the 21-day MA with no sign of reclaiming it.",
+    "Do not buy if BTC/GOLD weekly RSI is above 70 — Bitcoin is overvalued vs gold at those levels.",
+    "Do not add to altcoin positions when the trend on the weekly or daily chart is still decisively down (lower highs, lower lows structure intact).",
+    "Do not use leverage to increase upside speculation — only use leverage for hedging existing positions.",
+    "Do not FOMO into gold or silver when weekly/bi-weekly MACD is at historic highs — rotation away from commodities is imminent.",
+    "Avoid buying assets that are still making new lows without any bullish divergence on RSI or MACD.",
+    "Do not trade the grid strategy on extremely illiquid or low-volume altcoins — requires consistent bid/ask spread and sufficient volume to fill 1,000-2,000 trades per month.",
+    "CHOPPINESS FILTER: Do not enter any trade when the 14-period Choppiness Index is above 50. CI > 50 means the market is in a sideways/choppy regime — entries in this environment produce the worst risk/reward ratio and historically cause the most drawdown."
+  ],
+
+  "timeframes": {
+    "primary_bias": "Weekly (1W) — BTC/GOLD RSI, 50-week MA, weekly MACD for macro regime and accumulation signals",
+    "trend_entry": "Daily (1D) — 21-day MA and 50-day MA for trend entry/exit triggers; daily RSI for extreme oversold conditions",
+    "grid_trading": "3-day (3D) — 3-day MACD for identifying capitulation extremes; 3-day candles for medium-term momentum",
+    "grid_execution": "Intraday (1H or less) — Grid/volatility orders execute continuously on hourly or shorter timeframes; van de Poppe executes 1,000-2,000 trades per month"
+  },
+
+  "grid_strategy_parameters": {
+    "description": "Van de Poppe's active grid/volatility day trading strategy, executed on OKX or Hyperliquid",
+    "fair_price_reference": "20-day MA (called 'the mean' — buy below it, sell above it)",
+    "profit_target_per_trade": "1% above each buy order",
+    "trade_frequency": "1,000 to 2,000 executions per month",
+    "btc_daily_volatility_reference": "2.24% average daily move — use this to space grid levels",
+    "grid_spacing_logic": "Space buy orders at intervals proportional to the asset's average daily volatility. The further price moves below the 20-day MA, the more allocation deployed.",
+    "allocation_rule": "Scale allocation deeper as price moves further from the 20-day MA. When price is near the mean, reduce grid density. When price is far below, increase grid density.",
+    "example_return": "36% APR on ETH/EUR grid; up to 41% APR on more aggressive settings",
+    "reinvestment": "Reinvest profits into grid to compound returns",
+    "supported_platforms": "OKX (spot grid bots, spot DCA bots, spot margin up to 10x long), Hyperliquid"
+  },
+
+  "watchlist_notes": {
+    "BTCUSD": "Primary asset. Watch daily 21-day MA breakout. Monitor BTC/GOLD weekly RSI. Core accumulation asset.",
+    "ETHUSD": "Secondary asset. Watch ETH/SILVER bi-weekly RSI for all-time-low signals. Ethereum follows Bitcoin but with higher leverage in bull markets.",
+    "BTCUSD_vs_GOLD": "Most important relative-value chart. Weekly RSI < 30 = buy Bitcoin aggressively. RSI > 70 = reduce Bitcoin, consider gold.",
+    "ETHUSD_vs_SILVER": "Ethereum-specific relative-value chart. Bi-weekly RSI at all-time lows = maximum ETH accumulation signal.",
+    "GOLD": "Rotation indicator. When gold MACD peaks from historic highs, expect Bitcoin rotation. Monitor weekly MACD for exhaustion signals.",
+    "SILVER": "Correlated to ETH via ETH/SILVER ratio. Silver euphoria (7+ sigma weekly moves) = ETH rotation opportunity imminent."
+  },
+
+  "notes": "Michaël van de Poppe (@CryptoMichNL) operates two distinct strategy layers: (1) MACRO ACCUMULATION — a multi-month, macro-driven DCA strategy using BTC/GOLD RSI on weekly timeframes as the primary signal. When BTC/GOLD weekly RSI < 30 (historically 22 in April 2026 — lowest ever), it is the strongest possible accumulation signal. He explicitly bought aggressively during this window. (2) GRID/VOLATILITY TRADING — an active day-trading strategy using the 20-day MA as fair price, buying below it and selling 1% above it, targeting 30-50% APR. He runs this on Hyperliquid and OKX using spot grid bots with 1,000-2,000 trades per month. Current view (April 2026): Bitcoin is at its lowest valuation vs gold ever (RSI ~22), 3-day MACD is at historic lows, daily RSI is at historic lows — all three signals align for maximum accumulation. Key resistance levels: 21-day MA, then $92K, then $100-105K (50-week MA). Gold has topped after a massive run; Bitcoin rotation is next, following the pattern seen in 2016 and 2020. Van de Poppe does NOT use directional shorts. He does NOT do altcoin speculation during early recovery — establishes Bitcoin and ETH first."
 }

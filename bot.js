@@ -166,6 +166,34 @@ function calcRSI(closes, period = 14) {
   return 100 - 100 / (1 + rs);
 }
 
+// Choppiness Index — filters out sideways/choppy markets
+// CI < 50 = trending market (trade allowed)
+// CI > 50 = choppy market (skip trade)
+function calcChoppinessIndex(candles, period = 14) {
+  if (candles.length < period + 1) return null;
+  const slice = candles.slice(candles.length - period);
+  const prev  = candles[candles.length - period - 1];
+
+  // Sum of True Ranges
+  let atrSum = 0;
+  for (let i = 0; i < slice.length; i++) {
+    const prevClose = i === 0 ? prev.close : slice[i - 1].close;
+    const tr = Math.max(
+      slice[i].high - slice[i].low,
+      Math.abs(slice[i].high - prevClose),
+      Math.abs(slice[i].low  - prevClose)
+    );
+    atrSum += tr;
+  }
+
+  const highestHigh = Math.max(...slice.map(c => c.high));
+  const lowestLow   = Math.min(...slice.map(c => c.low));
+  const range = highestHigh - lowestLow;
+  if (range === 0) return null;
+
+  return 100 * (Math.log10(atrSum / range) / Math.log10(period));
+}
+
 // VWAP — session-based, resets at midnight UTC
 function calcVWAP(candles) {
   const midnightUTC = new Date();
@@ -182,7 +210,7 @@ function calcVWAP(candles) {
 
 // ─── Safety Check ───────────────────────────────────────────────────────────
 
-function runSafetyCheck(price, ema8, vwap, rsi3, rules) {
+function runSafetyCheck(price, ema8, vwap, rsi3, ci, rules) {
   const results = [];
 
   const check = (label, required, actual, pass) => {
@@ -233,6 +261,16 @@ function runSafetyCheck(price, ema8, vwap, rsi3, rules) {
       `${distFromVWAP.toFixed(2)}%`,
       distFromVWAP < 1.5,
     );
+
+    // 5. Choppiness Index — market must be trending, not choppy
+    if (ci !== null) {
+      check(
+        "Choppiness Index below 50 (trending market, not choppy)",
+        "< 50",
+        ci.toFixed(2),
+        ci < 50,
+      );
+    }
   } else if (bearishBias) {
     console.log("  Bias: BEARISH — checking short entry conditions\n");
 
@@ -264,6 +302,16 @@ function runSafetyCheck(price, ema8, vwap, rsi3, rules) {
       `${distFromVWAP.toFixed(2)}%`,
       distFromVWAP < 1.5,
     );
+
+    // CI check for bearish side too
+    if (ci !== null) {
+      check(
+        "Choppiness Index below 50 (trending market, not choppy)",
+        "< 50",
+        ci.toFixed(2),
+        ci < 50,
+      );
+    }
   } else {
     console.log("  Bias: NEUTRAL — no clear direction. No trade.\n");
     results.push({
@@ -528,10 +576,12 @@ async function run() {
   const ema8 = calcEMA(closes, 8);
   const vwap = calcVWAP(candles);
   const rsi3 = calcRSI(closes, 3);
+  const ci   = calcChoppinessIndex(candles, 14);
 
   console.log(`  EMA(8):  $${ema8.toFixed(2)}`);
   console.log(`  VWAP:    $${vwap ? vwap.toFixed(2) : "N/A"}`);
   console.log(`  RSI(3):  ${rsi3 ? rsi3.toFixed(2) : "N/A"}`);
+  console.log(`  CI(14):  ${ci ? ci.toFixed(2) : "N/A"}${ci ? (ci < 50 ? " ✅ trending" : " ⚠️  choppy") : ""}`);
 
   if (!vwap || !rsi3) {
     console.log("\n⚠️  Not enough data to calculate indicators. Exiting.");
@@ -539,7 +589,7 @@ async function run() {
   }
 
   // Run safety check
-  const { results, allPass } = runSafetyCheck(price, ema8, vwap, rsi3, rules);
+  const { results, allPass } = runSafetyCheck(price, ema8, vwap, rsi3, ci, rules);
 
   // Calculate position size
   const tradeSize = Math.min(
@@ -555,7 +605,7 @@ async function run() {
     symbol: CONFIG.symbol,
     timeframe: CONFIG.timeframe,
     price,
-    indicators: { ema8, vwap, rsi3 },
+    indicators: { ema8, vwap, rsi3, ci },
     conditions: results,
     allPass,
     tradeSize,
