@@ -543,12 +543,28 @@ function generateTaxSummary() {
 // ─── Google Sheets Integration ───────────────────────────────────────────────
 
 async function getSheetClient() {
-  const credPath = process.env.GOOGLE_CREDENTIALS_PATH || "./google-credentials.json";
-  const sheetId  = process.env.GOOGLE_SHEET_ID;
-  if (!sheetId || !existsSync(credPath)) return null;
+  const sheetId = process.env.GOOGLE_SHEET_ID;
+  if (!sheetId) return null;
+
+  let credentials = null;
+
+  // Railway: credentials as JSON string in env var
+  if (process.env.GOOGLE_CREDENTIALS) {
+    try {
+      credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
+    } catch {
+      console.log("⚠️  GOOGLE_CREDENTIALS env var is not valid JSON — skipping Sheets");
+      return null;
+    }
+  } else {
+    // Local: credentials from file
+    const credPath = process.env.GOOGLE_CREDENTIALS_PATH || "./google-credentials.json";
+    if (!existsSync(credPath)) return null;
+    credentials = JSON.parse(readFileSync(credPath, "utf8"));
+  }
 
   const auth = new google.auth.GoogleAuth({
-    keyFile: credPath,
+    credentials,
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
   });
 
