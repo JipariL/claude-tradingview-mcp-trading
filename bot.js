@@ -555,7 +555,10 @@ function generateTaxSummary() {
 
 async function getSheetClient() {
   const sheetId = process.env.GOOGLE_SHEET_ID;
-  if (!sheetId) return null;
+  if (!sheetId) {
+    console.log("⚠️  Google Sheets: GOOGLE_SHEET_ID not set — skipping");
+    return null;
+  }
 
   let credentials = null;
 
@@ -563,15 +566,20 @@ async function getSheetClient() {
   if (process.env.GOOGLE_CREDENTIALS) {
     try {
       credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS);
-    } catch {
-      console.log("⚠️  GOOGLE_CREDENTIALS env var is not valid JSON — skipping Sheets");
+      console.log("  Google Sheets: using GOOGLE_CREDENTIALS env var");
+    } catch (e) {
+      console.log(`⚠️  Google Sheets: GOOGLE_CREDENTIALS is not valid JSON — ${e.message}`);
       return null;
     }
   } else {
     // Local: credentials from file
     const credPath = process.env.GOOGLE_CREDENTIALS_PATH || "./google-credentials.json";
-    if (!existsSync(credPath)) return null;
+    if (!existsSync(credPath)) {
+      console.log(`⚠️  Google Sheets: credentials file not found at ${credPath}`);
+      return null;
+    }
     credentials = JSON.parse(readFileSync(credPath, "utf8"));
+    console.log("  Google Sheets: using local credentials file");
   }
 
   const auth = new google.auth.GoogleAuth({
