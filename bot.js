@@ -98,38 +98,56 @@ function countTodaysTrades(log) {
   ).length;
 }
 
-// ─── Market Data (Bybit public API — free, no auth, works globally) ─────────
+// ─── Market Data (Kraken public API — US exchange, works from Railway) ───────
 
 async function fetchCandles(symbol, interval, limit = 500) {
-  // Map our timeframe format to Bybit interval format
+  // Map timeframe to Kraken interval (minutes)
   const intervalMap = {
     "1m":  "1",
-    "3m":  "3",
     "5m":  "5",
     "15m": "15",
     "30m": "30",
     "1H":  "60",
     "4H":  "240",
-    "1D":  "D",
-    "1W":  "W",
+    "1D":  "1440",
+    "1W":  "10080",
   };
-  const bybitInterval = intervalMap[interval] || "D";
 
-  const url = `https://api.bybit.com/v5/market/kline?category=spot&symbol=${symbol}&interval=${bybitInterval}&limit=${limit}`;
+  // Map common symbols to Kraken pair names
+  const symbolMap = {
+    "BTCUSDT": "XBTUSD",
+    "BTCUSD":  "XBTUSD",
+    "ETHUSDT": "ETHUSD",
+    "ETHUSD":  "ETHUSD",
+  };
+
+  const krakenSymbol   = symbolMap[symbol] || "XBTUSD";
+  const krakenInterval = intervalMap[interval] || "1440";
+
+  // Request `limit` candles worth of history
+  const since = Math.floor(Date.now() / 1000) - parseInt(krakenInterval) * 60 * limit;
+
+  const url = `https://api.kraken.com/0/public/OHLC?pair=${krakenSymbol}&interval=${krakenInterval}&since=${since}`;
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Bybit API error: ${res.status}`);
+  if (!res.ok) throw new Error(`Kraken API error: ${res.status}`);
   const json = await res.json();
 
-  if (json.retCode !== 0) throw new Error(`Bybit API error: ${json.retMsg}`);
+  if (json.error && json.error.length > 0) {
+    throw new Error(`Kraken API error: ${json.error.join(", ")}`);
+  }
 
-  // Bybit returns newest-first — reverse to get chronological order
-  return json.result.list.reverse().map((k) => ({
-    time:   parseInt(k[0]),
+  // Result key is dynamic (e.g. "XXBTZUSD") — grab first non-"last" key
+  const key = Object.keys(json.result).find((k) => k !== "last");
+
+  // Kraken format: [time, open, high, low, close, vwap, volume, count]
+  // Already chronological (oldest first)
+  return json.result[key].map((k) => ({
+    time:   parseInt(k[0]) * 1000,
     open:   parseFloat(k[1]),
     high:   parseFloat(k[2]),
     low:    parseFloat(k[3]),
     close:  parseFloat(k[4]),
-    volume: parseFloat(k[5]),
+    volume: parseFloat(k[6]),
   }));
 }
 
