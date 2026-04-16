@@ -21,10 +21,10 @@ function checkOnboarding() {
   const required = ["BITGET_API_KEY", "BITGET_SECRET_KEY", "BITGET_PASSPHRASE"];
   const missing = required.filter((k) => !process.env[k]);
 
-  if (!existsSync(".env")) {
-    console.log(
-      "\n⚠️  No .env file found — opening it for you to fill in...\n",
-    );
+  // On Railway (cloud), env vars are injected directly — no .env file needed
+  // On local, create .env if missing
+  if (missing.length > 0 && !existsSync(".env")) {
+    console.log("\n⚠️  No .env file found — creating template...\n");
     writeFileSync(
       ".env",
       [
@@ -36,32 +36,22 @@ function checkOnboarding() {
         "# Trading config",
         "PORTFOLIO_VALUE_USD=1000",
         "MAX_TRADE_SIZE_USD=100",
-        "MAX_TRADES_PER_DAY=3",
+        "MAX_TRADES_PER_DAY=30",
         "PAPER_TRADING=true",
         "SYMBOL=BTCUSDT",
-        "TIMEFRAME=4H",
+        "TIMEFRAME=1D",
       ].join("\n") + "\n",
     );
-    try {
-      execSync("open .env");
-    } catch {}
-    console.log(
-      "Fill in your BitGet credentials in .env then re-run: node bot.js\n",
-    );
+    console.log("Fill in your BitGet credentials in .env then re-run: node bot.js\n");
     process.exit(0);
   }
 
   if (missing.length > 0) {
-    console.log(`\n⚠️  Missing credentials in .env: ${missing.join(", ")}`);
-    console.log("Opening .env for you now...\n");
-    try {
-      execSync("open .env");
-    } catch {}
-    console.log("Add the missing values then re-run: node bot.js\n");
-    process.exit(0);
+    console.log(`\n⚠️  Missing credentials: ${missing.join(", ")}`);
+    console.log("Add the missing values to .env (local) or Railway Variables (cloud)\n");
+    process.exit(1);
   }
 
-  // Always print the CSV location so users know where to find their trade log
   const csvPath = new URL("trades.csv", import.meta.url).pathname;
   console.log(`\n📄 Trade log: ${csvPath}`);
   console.log(
@@ -108,34 +98,37 @@ function countTodaysTrades(log) {
   ).length;
 }
 
-// ─── Market Data (Binance public API — free, no auth) ───────────────────────
+// ─── Market Data (Bybit public API — free, no auth, works globally) ─────────
 
-async function fetchCandles(symbol, interval, limit = 100) {
-  // Map our timeframe format to Binance interval format
+async function fetchCandles(symbol, interval, limit = 500) {
+  // Map our timeframe format to Bybit interval format
   const intervalMap = {
-    "1m": "1m",
-    "3m": "3m",
-    "5m": "5m",
-    "15m": "15m",
-    "30m": "30m",
-    "1H": "1h",
-    "4H": "4h",
-    "1D": "1d",
-    "1W": "1w",
+    "1m":  "1",
+    "3m":  "3",
+    "5m":  "5",
+    "15m": "15",
+    "30m": "30",
+    "1H":  "60",
+    "4H":  "240",
+    "1D":  "D",
+    "1W":  "W",
   };
-  const binanceInterval = intervalMap[interval] || "1m";
+  const bybitInterval = intervalMap[interval] || "D";
 
-  const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${binanceInterval}&limit=${limit}`;
+  const url = `https://api.bybit.com/v5/market/kline?category=spot&symbol=${symbol}&interval=${bybitInterval}&limit=${limit}`;
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Binance API error: ${res.status}`);
-  const data = await res.json();
+  if (!res.ok) throw new Error(`Bybit API error: ${res.status}`);
+  const json = await res.json();
 
-  return data.map((k) => ({
-    time: k[0],
-    open: parseFloat(k[1]),
-    high: parseFloat(k[2]),
-    low: parseFloat(k[3]),
-    close: parseFloat(k[4]),
+  if (json.retCode !== 0) throw new Error(`Bybit API error: ${json.retMsg}`);
+
+  // Bybit returns newest-first — reverse to get chronological order
+  return json.result.list.reverse().map((k) => ({
+    time:   parseInt(k[0]),
+    open:   parseFloat(k[1]),
+    high:   parseFloat(k[2]),
+    low:    parseFloat(k[3]),
+    close:  parseFloat(k[4]),
     volume: parseFloat(k[5]),
   }));
 }
