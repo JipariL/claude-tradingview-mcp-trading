@@ -13,6 +13,7 @@ import "dotenv/config";
 import { readFileSync, writeFileSync, existsSync, appendFileSync } from "fs";
 import crypto from "crypto";
 import { execSync } from "child_process";
+import { google } from "googleapis";
 
 // ─── Onboarding ───────────────────────────────────────────────────────────────
 
@@ -539,6 +540,195 @@ function generateTaxSummary() {
   console.log("─────────────────────────────────────────────────────────\n");
 }
 
+// ─── Google Sheets Integration ───────────────────────────────────────────────
+
+async function getSheetClient() {
+  const credPath = process.env.GOOGLE_CREDENTIALS_PATH || "./google-credentials.json";
+  const sheetId  = process.env.GOOGLE_SHEET_ID;
+  if (!sheetId || !existsSync(credPath)) return null;
+
+  const auth = new google.auth.GoogleAuth({
+    keyFile: credPath,
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  });
+
+  const sheets = google.sheets({ version: "v4", auth });
+  return { sheets, sheetId };
+}
+
+async function ensureSheetTabs(sheets, sheetId) {
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: sheetId });
+  const existing = meta.data.sheets.map((s) => s.properties.title);
+
+  const needed = ["Trades", "Summary", "Decision Log"];
+  const requests = [];
+
+  for (const title of needed) {
+    if (!existing.includes(title)) {
+      requests.push({ addSheet: { properties: { title } } });
+    }
+  }
+
+  if (requests.length > 0) {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: sheetId,
+      requestBody: { requests },
+    });
+    console.log(`  Created sheet tabs: ${requests.map((r) => r.addSheet.properties.title).join(", ")}`);
+  }
+
+  // Ensure Trades tab has headers on row 1
+  const tradesHeaders = await sheets.spreadsheets.values.get({
+    spreadsheetId: sheetId,
+    range: "Trades!A1:M1",
+  });
+  if (!tradesHeaders.data.values || tradesHeaders.data.values.length === 0) {
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: sheetId,
+      range: "Trades!A1",
+      valueInputOption: "RAW",
+      requestBody: {
+        values: [[
+          "Date", "Time (UTC)", "Symbol", "Timeframe", "Price",
+          "EMA(8)", "VWAP", "RSI(3)", "CI(14)",
+          "Side", "Trade Size USD", "Order ID", "Mode", "Notes"
+        ]],
+      },
+    });
+  }
+}
+
+async function writeToGoogleSheets(logEntry) {
+  try {
+    const client = await getSheetClient();
+    if (!client) return; // No credentials or Sheet ID — skip silently
+
+    const { sheets, sheetId } = client;
+    await ensureSheetTabs(sheets, sheetId);
+
+    const now   = new Date(logEntry.timestamp);
+    const date  = now.toISOString().slice(0, 10);
+    const time  = now.toISOString().slice(11, 19);
+    const ind   = logEntry.indicators || {};
+
+    // ── 1. Trades tab ──
+    let side = "", orderId = "", mode = "", notes = "";
+
+    if (!logEntry.allPass) {
+      const failed = (logEntry.conditions || [])
+        .filter((c) => !c.pass)
+        .map((c) => c.label)
+        .join("; ");
+      mode    = "BLOCKED";
+      orderId = "BLOCKED";
+      notes   = `Failed: ${failed}`;
+    } else if (logEntry.paperTrading) {
+      side    = "BUY";
+      orderId = logEntry.orderId || "";
+      mode    = "PAPER";
+      notes   = "All conditions met";
+    } else {
+      side    = "BUY";
+      orderId = logEntry.orderId || "";
+      mode    = "LIVE";
+      notes   = logEntry.error ? `Error: ${logEntry.error}` : "All conditions met";
+    }
+
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: sheetId,
+      range: "Trades!A1",
+      valueInputOption: "RAW",
+      insertDataOption: "INSERT_ROWS",
+      requestBody: {
+        values: [[
+          date,
+          time,
+          logEntry.symbol,
+          logEntry.timeframe,
+          logEntry.price ? logEntry.price.toFixed(2) : "",
+          ind.ema8  ? ind.ema8.toFixed(2)  : "",
+          ind.vwap  ? ind.vwap.toFixed(2)  : "",
+          ind.rsi3  ? ind.rsi3.toFixed(2)  : "",
+          ind.ci    ? ind.ci.toFixed(2)    : "",
+          side,
+          logEntry.tradeSize ? logEntry.tradeSize.toFixed(2) : "",
+          orderId,
+          mode,
+          notes,
+        ]],
+      },
+    });
+
+    // ── 2. Summary tab ──
+    const allTrades = JSON.parse(readFileSync(LOG_FILE, "utf8")).trades || [];
+    const today     = date;
+
+    const total    = allTrades.length;
+    const paper    = allTrades.filter((t) => t.paperTrading && t.orderPlaced).length;
+    const live     = allTrades.filter((t) => !t.paperTrading && t.orderPlaced).length;
+    const blocked  = allTrades.filter((t) => !t.allPass).length;
+    const todayCnt = allTrades.filter(
+      (t) => t.timestamp.startsWith(today) && t.orderPlaced
+    ).length;
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: sheetId,
+      range: "Summary!A1",
+      valueInputOption: "RAW",
+      requestBody: {
+        values: [
+          ["Last Updated",        new Date().toISOString()],
+          ["Symbol",              logEntry.symbol],
+          ["Timeframe",           logEntry.timeframe],
+          ["Mode",                logEntry.paperTrading ? "PAPER TRADING" : "LIVE TRADING"],
+          [""],
+          ["── Today ──",         ""],
+          ["Trades Today",        todayCnt],
+          ["Max Per Day",         CONFIG.maxTradesPerDay],
+          [""],
+          ["── All Time ──",      ""],
+          ["Total Decisions",     total],
+          ["Paper Trades",        paper],
+          ["Live Trades",         live],
+          ["Blocked by Safety",   blocked],
+          [""],
+          ["── Latest Run ──",    ""],
+          ["Price",               logEntry.price ? `$${logEntry.price.toFixed(2)}` : "N/A"],
+          ["EMA(8)",              ind.ema8  ? `$${ind.ema8.toFixed(2)}`  : "N/A"],
+          ["VWAP",                ind.vwap  ? `$${ind.vwap.toFixed(2)}`  : "N/A"],
+          ["RSI(3)",              ind.rsi3  ? ind.rsi3.toFixed(2)         : "N/A"],
+          ["CI(14)",              ind.ci    ? `${ind.ci.toFixed(2)} ${ind.ci < 50 ? "(trending)" : "(choppy)"}` : "N/A"],
+          ["Decision",            logEntry.allPass ? "✅ TRADE" : "🚫 BLOCKED"],
+          ["Last Trade ID",       logEntry.orderId || "—"],
+        ],
+      },
+    });
+
+    // ── 3. Decision Log tab ──
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: sheetId,
+      range: "Decision Log!A1",
+      valueInputOption: "RAW",
+      insertDataOption: "INSERT_ROWS",
+      requestBody: {
+        values: [[
+          logEntry.timestamp,
+          logEntry.symbol,
+          logEntry.price ? logEntry.price.toFixed(2) : "",
+          logEntry.allPass ? "TRADE" : "BLOCKED",
+          mode,
+          logEntry.orderId || "",
+          JSON.stringify(logEntry.conditions || []),
+        ]],
+      },
+    });
+
+    console.log(`📊 Google Sheets updated → https://docs.google.com/spreadsheets/d/${sheetId}`);
+  } catch (err) {
+    console.log(`⚠️  Google Sheets write failed: ${err.message}`);
+  }
+}
+
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 async function run() {
@@ -662,6 +852,9 @@ async function run() {
 
   // Write tax CSV row for every run (executed, paper, or blocked)
   writeTradeCsv(logEntry);
+
+  // Push to Google Sheets dashboard
+  await writeToGoogleSheets(logEntry);
 
   console.log("═══════════════════════════════════════════════════════════\n");
 }
