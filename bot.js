@@ -98,11 +98,11 @@ async function bitgetRequest(method, path, params = {}, body = null) {
 // ─── Timeframe helpers ────────────────────────────────────────────────────────
 
 const TIMEFRAME_TO_BITGET = {
-  "1m": "1m", "5m": "5m", "15m": "15m", "30m": "30m",
+  "1m": "1m", "5m": "5m", "15m": "15m", "15MIN": "15m", "30m": "30m",
   "1H": "1H", "4H": "4H", "1D": "1Dutc", "1W": "1Wutc",
 };
 const TIMEFRAME_MINUTES = {
-  "1m": 1, "5m": 5, "15m": 15, "30m": 30,
+  "1m": 1, "5m": 5, "15m": 15, "15MIN": 15, "30m": 30,
   "1H": 60, "4H": 240, "1D": 1440, "1W": 10080,
 };
 
@@ -853,14 +853,19 @@ async function run() {
   const ci     = calcChoppinessIndex(candles, 14);
   const spike  = detectSpike(candles);
 
-  console.log(`\n  Price:  $${price.toFixed(2)}`);
+  console.log(`\n  Candles: ${candles.length} bars`);
+  console.log(`  Price:  $${price.toFixed(2)}`);
   console.log(`  EMA(8): $${ema8.toFixed(2)}`);
   console.log(`  VWAP:   ${vwap ? `$${vwap.toFixed(2)}` : "N/A"}`);
-  console.log(`  RSI(3): ${rsi3 !== null ? rsi3.toFixed(2) : "N/A"}`);
+  console.log(`  RSI(3): ${rsi3 !== null ? rsi3.toFixed(2) : "N/A"} (raw: ${rsi3})`);
   console.log(`  CI(14): ${ci !== null ? `${ci.toFixed(2)}${ci < 50 ? " ✅ trending" : " ⚠️ choppy"}` : "N/A"}`);
   console.log(`  Spike:  ${spike ? `⚠️ YES (>${SPIKE_PCT}%)` : "✅ None"}`);
 
-  if (!vwap || rsi3 === null) { console.log("\n⚠️  Insufficient indicator data."); process.exit(0); }
+  if (!vwap || rsi3 === null) {
+    console.log("\n⚠️  Insufficient indicator data.");
+    await writeWalletStatus(sheetClient, balance, paperWallet, { paperTrading: CONFIG.paperTrading, price });
+    process.exit(0);
+  }
 
   const { results, allPass, bias } = runSafetyCheck(price, ema8, vwap, rsi3, ci, spike);
 
