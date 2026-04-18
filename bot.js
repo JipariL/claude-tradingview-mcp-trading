@@ -856,11 +856,11 @@ async function run() {
   console.log(`\n  Price:  $${price.toFixed(2)}`);
   console.log(`  EMA(8): $${ema8.toFixed(2)}`);
   console.log(`  VWAP:   ${vwap ? `$${vwap.toFixed(2)}` : "N/A"}`);
-  console.log(`  RSI(3): ${rsi3 ? rsi3.toFixed(2) : "N/A"}`);
-  console.log(`  CI(14): ${ci ? `${ci.toFixed(2)}${ci < 50 ? " ✅ trending" : " ⚠️ choppy"}` : "N/A"}`);
+  console.log(`  RSI(3): ${rsi3 !== null ? rsi3.toFixed(2) : "N/A"}`);
+  console.log(`  CI(14): ${ci !== null ? `${ci.toFixed(2)}${ci < 50 ? " ✅ trending" : " ⚠️ choppy"}` : "N/A"}`);
   console.log(`  Spike:  ${spike ? `⚠️ YES (>${SPIKE_PCT}%)` : "✅ None"}`);
 
-  if (!vwap || !rsi3) { console.log("\n⚠️  Insufficient indicator data."); process.exit(0); }
+  if (!vwap || rsi3 === null) { console.log("\n⚠️  Insufficient indicator data."); process.exit(0); }
 
   const { results, allPass, bias } = runSafetyCheck(price, ema8, vwap, rsi3, ci, spike);
 
