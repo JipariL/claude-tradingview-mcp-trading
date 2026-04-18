@@ -722,12 +722,14 @@ async function writeWalletStatus(sheetClient, bitgetBalance, paperWallet, entry)
   }
 }
 
-// ─── Write trade row to Google Sheets (Gold tab only — no sidebar clutter) ───
+// ─── Write to Google Sheets — Gold log + Gold Wallet status ──────────────────
 
-async function writeToGoogleSheets(e, sheetClient) {
+async function writeToGoogleSheets(e) {
+  const client = await getSheetClient();
+  if (!client) return;
+  const { sheets, sheetId } = client;
+
   try {
-    if (!sheetClient) return;
-    const { sheets, sheetId } = sheetClient;
     const now  = new Date(e.timestamp);
     const date = now.toISOString().slice(0, 10);
     const time = now.toISOString().slice(11, 19);
@@ -744,7 +746,7 @@ async function writeToGoogleSheets(e, sheetClient) {
       notes   = e.error ? `Error: ${e.error}` : "All conditions met";
     }
 
-    // Append one row to the Gold trade log — columns A–O only, no sidebar
+    // 1. Append row to Gold trade log
     await sheets.spreadsheets.values.append({
       spreadsheetId: sheetId, range: "Gold!A1",
       valueInputOption: "RAW", insertDataOption: "INSERT_ROWS",
@@ -753,14 +755,30 @@ async function writeToGoogleSheets(e, sheetClient) {
         e.price  ? e.price.toFixed(2)  : "",
         ind.ema8 ? ind.ema8.toFixed(2) : "",
         ind.vwap ? ind.vwap.toFixed(2) : "",
-        ind.rsi3 ? ind.rsi3.toFixed(2) : "",
-        ind.ci   ? ind.ci.toFixed(2)   : "",
+        ind.rsi3 !== null ? ind.rsi3.toFixed(2) : "",
+        ind.ci   !== null ? ind.ci.toFixed(2)   : "",
         ind.spike ? "YES" : "NO",
         side, e.tradeSize ? e.tradeSize.toFixed(2) : "",
         orderId, mode, notes,
       ]] },
     });
-    console.log(`📊 Gold log updated → https://docs.google.com/spreadsheets/d/${sheetId}`);
+    console.log(`📊 Gold log updated`);
+
+    // 2. Update Gold Wallet status cells
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: sheetId,
+      requestBody: {
+        valueInputOption: "RAW",
+        data: [
+          { range: "Gold Wallet!B1", values: [[new Date().toISOString()]] },
+          { range: "Gold Wallet!B2", values: [[e.paperTrading ? "PAPER TRADING" : "LIVE TRADING"]] },
+          { range: "Gold Wallet!B3", values: [[`$${e.price ? e.price.toFixed(2) : "—"}`]] },
+          { range: "Gold Wallet!B4", values: [[side || "BLOCKED"]] },
+          { range: "Gold Wallet!B5", values: [[notes]] },
+        ],
+      },
+    });
+    console.log(`💼 Gold Wallet updated → https://docs.google.com/spreadsheets/d/${sheetId}`);
   } catch (err) {
     console.log(`⚠️  Sheets error: ${err.message}`);
   }
@@ -799,11 +817,6 @@ async function run() {
 
   checkEventCalendar();
 
-  // ── Init Sheets early (needed for trade limit count) ──────────────────────
-  const sheetClient = await getSheetClient();
-  await ensureSheetHeaders(sheetClient);  // write headers if Gold tab was cleared
-  await ensureWalletTab(sheetClient);     // create Wallet tab once (formulas are permanent)
-
   // ── Bitget futures wallet balance ─────────────────────────────────────────
   console.log("\n── Wallet Balance (Bitget Futures) ──────────────────────\n");
   const balance = await getFuturesBalance();
@@ -812,23 +825,10 @@ async function run() {
   console.log(`  📈 Unrealised P&L : $${balance.unrealisedPL.toFixed(2)}`);
   console.log(`  🎯 Budget ceiling : $${CONFIG.maxTradeSizeUSD} per trade`);
 
-  // ── Paper wallet — calculate running balance from trade history ───────────
-  console.log("\n── Paper Wallet ─────────────────────────────────────────\n");
-  const paperWallet = await calculatePaperBalance(sheetClient);
-  const pnl = paperWallet.balance - CONFIG.portfolioValue;
-  console.log(`  💼 Starting balance : $${CONFIG.portfolioValue.toFixed(2)}`);
-  console.log(`  💼 Current balance  : $${paperWallet.balance.toFixed(2)}`);
-  console.log(`  📈 Paper P&L        : ${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)}`);
-  if (paperWallet.openPosition) {
-    const p = paperWallet.openPosition;
-    console.log(`  🔓 Open position    : ${p.side} ${(p.sizeUSD/p.price).toFixed(4)} oz @ $${p.price.toFixed(2)}`);
-  } else {
-    console.log("  🔓 Open position    : None (flat)");
-  }
-
-  // ── Trade limits — from Sheets, not local file (Bug fix #1) ──────────────
+  // ── Trade limits — local log file (fast, no Sheets dependency) ───────────
   console.log("\n── Trade Limits ─────────────────────────────────────────\n");
-  const todayCount = await countTodaysTradesFromSheets(sheetClient);
+  const log = loadLog();
+  const todayCount = countTodaysTrades(log);
   if (todayCount >= CONFIG.maxTradesPerDay) {
     console.log(`🚫 Max trades reached today: ${todayCount}/${CONFIG.maxTradesPerDay}`);
     process.exit(0);
@@ -943,9 +943,10 @@ async function run() {
     }
   }
 
+  log.trades.push({ timestamp: entry.timestamp, orderPlaced: entry.orderPlaced || false });
+  saveLog(log);
   writeTradeCsv(entry);
-  await writeToGoogleSheets(entry, sheetClient);                        // Gold tab: trade log row
-  await writeWalletStatus(sheetClient, balance, paperWallet, entry);   // Wallet tab: live data
+  await writeToGoogleSheets(entry);
 
   console.log("═══════════════════════════════════════════════════════════\n");
   process.exit(0);
